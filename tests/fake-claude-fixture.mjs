@@ -36,6 +36,16 @@ const sessionId = resumedSessionId || "sess_" + state.nextSessionId++;
 state.calls.push({ args, cwd: process.cwd(), sessionId });
 saveState(state);
 
+if (args.includes("--print") && args.includes("stream-json") && !args.includes("--verbose")) {
+  console.error("When using --print, --output-format=stream-json requires --verbose");
+  process.exit(1);
+}
+
+if (args.includes("acceptEdits") && !args.includes("--dangerously-skip-permissions")) {
+  console.error("tool permission denied");
+  process.exit(1);
+}
+
 if (BEHAVIOR === "fail") {
   console.error("claude failed intentionally");
   process.exit(2);

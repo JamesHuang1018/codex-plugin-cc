@@ -390,7 +390,10 @@ function resolveLatestClaudeSession(cwd, excludeJobId = null) {
 }
 
 function buildClaudeArgs(request, claudeSessionId) {
-  const args = ["--print", "--output-format", "stream-json", "--permission-mode", request.write ? "acceptEdits" : "plan"];
+  const args = ["--print", "--verbose", "--output-format", "stream-json", "--permission-mode", request.write ? "acceptEdits" : "plan"];
+  if (request.write) {
+    args.push("--dangerously-skip-permissions");
+  }
   if (request.model) {
     args.push("--model", request.model);
   }

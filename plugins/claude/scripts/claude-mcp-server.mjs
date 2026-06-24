@@ -12,13 +12,13 @@ const COMPANION = path.join(ROOT_DIR, "scripts", "claude-companion.mjs");
 const TOOLS = [
   {
     name: "claude_task",
-    description: "Start a Claude Code task from Codex. Defaults to plan-first mode unless write is true.",
+    description: "Start a Claude Code task from Codex. Defaults to write-capable non-interactive mode unless write is false.",
     inputSchema: {
       type: "object",
       properties: {
         prompt: { type: "string", description: "Task prompt to send to Claude Code" },
         background: { type: "boolean", description: "Start as a background job" },
-        write: { type: "boolean", description: "Allow Claude Code to modify the workspace" },
+        write: { type: "boolean", description: "Allow Claude Code to modify the workspace with non-interactive permissions. Defaults to true when omitted" },
         resume: { type: "boolean", description: "Resume the latest Claude Code task for this workspace" },
         fresh: { type: "boolean", description: "Force a fresh Claude Code task" },
         model: { type: "string", description: "Optional Claude model" },
@@ -93,7 +93,7 @@ const TOOLS = [
 ];
 
 function send(message) {
-  process.stdout.write(`${JSON.stringify(message)}\n`);
+  process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
 }
 
 function toolResult(text, structuredContent = null, isError = false) {
@@ -148,7 +148,7 @@ async function callTool(name, input = {}) {
     if (input.background) {
       args.push("--background");
     }
-    if (input.write) {
+    if (input.write !== false) {
       args.push("--write");
     }
     if (input.resume) {

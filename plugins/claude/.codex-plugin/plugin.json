@@ -1,7 +1,7 @@
 {
   "name": "claude",
   "version": "0.1.0",
-  "description": "Use Claude Code from Codex to plan or delegate tasks.",
+  "description": "Use Claude Code from Codex to delegate implementation, planning, and follow-up tasks.",
   "author": {
     "name": "OpenAI"
   },
@@ -18,8 +18,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Claude Code Delegate",
-    "shortDescription": "Delegate planning and tasks from Codex to Claude Code",
-    "longDescription": "Use Claude Code from Codex through a local runtime that supports plan-first delegation, background jobs, status checks, stored results, cancellation, and resume.",
+    "shortDescription": "Delegate tasks from Codex to Claude Code",
+    "longDescription": "Use Claude Code from Codex through a local runtime that supports write-capable delegation, plan-only requests, background jobs, status checks, stored results, cancellation, and resume.",
     "developerName": "OpenAI",
     "category": "Developer Tools",
     "capabilities": [

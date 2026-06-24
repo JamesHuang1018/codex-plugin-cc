@@ -1,6 +1,6 @@
 ---
 name: claude-code-delegate
-description: Delegate planning, diagnosis, or implementation work from Codex to Claude Code through the local Claude companion MCP tools. Use when Codex should ask Claude Code for a second pass, plan-first implementation handoff, repository diagnosis, or follow-up work.
+description: Delegate planning, diagnosis, or implementation work from Codex to Claude Code through the local Claude companion MCP tools. Use when Codex should ask Claude Code for a second pass, implementation handoff, repository diagnosis, or follow-up work.
 ---
 
 # Claude Code Delegate
@@ -20,10 +20,11 @@ Do not hand-roll direct `claude` shell commands while these tools are available.
 
 ## Delegation Rules
 
-- Default to plan-first delegation
-- Unless the user explicitly asks for implementation or passes `write: true`, call `claude_task` with `write: false`
+- Default to write-capable delegation so implementation work is not blocked by Claude Code plan mode
+- Unless the user explicitly asks for read-only behavior or only wants planning, diagnosis, or research without edits, call `claude_task` with `write: true`
+- When `write: true` or omitted, Claude runs with `--permission-mode acceptEdits` and `--dangerously-skip-permissions`
 - When `write: false`, Claude runs with `--permission-mode plan`
-- When `write: true`, Claude may modify the workspace and must be prompted to keep edits scoped
+- Claude may modify the workspace in write-capable mode and must be prompted to keep edits scoped
 - Preserve the user's task text except for routing controls such as resume, fresh, background, model, and effort
 - Leave `model` and `effort` unset unless the user explicitly chooses them
 - Prefer `background: true` for broad, long-running, multi-step, or open-ended work
@@ -45,7 +46,7 @@ Do not hand-roll direct `claude` shell commands while these tools are available.
 If MCP tools are unavailable, use:
 
 ```bash
-node plugins/claude/scripts/claude-companion.mjs task "<prompt>"
+node plugins/claude/scripts/claude-companion.mjs task --write "<prompt>"
 ```
 
 Only use this fallback when the MCP server is not available.

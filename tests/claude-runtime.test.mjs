@@ -52,10 +52,11 @@ test("claude task defaults to plan permission mode", () => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Claude handled: plan the migration/);
   const fakeState = readFakeState(statePath);
-  assert.deepEqual(fakeState.calls[0].args.slice(0, 5), ["--print", "--output-format", "stream-json", "--permission-mode", "plan"]);
+  assert.deepEqual(fakeState.calls[0].args.slice(0, 6), ["--print", "--verbose", "--output-format", "stream-json", "--permission-mode", "plan"]);
+  assert.equal(fakeState.calls[0].args.includes("--dangerously-skip-permissions"), false);
 });
 
-test("claude task switches permission mode only when write is requested", () => {
+test("claude task enables write-capable non-interactive permissions when write is requested", () => {
   const repo = makeRepo();
   const binDir = makeTempDir();
   const statePath = installFakeClaude(binDir);
@@ -66,7 +67,8 @@ test("claude task switches permission mode only when write is requested", () => 
 
   assert.equal(result.status, 0, result.stderr);
   const fakeState = readFakeState(statePath);
-  assert.deepEqual(fakeState.calls[0].args.slice(0, 5), ["--print", "--output-format", "stream-json", "--permission-mode", "acceptEdits"]);
+  assert.deepEqual(fakeState.calls[0].args.slice(0, 6), ["--print", "--verbose", "--output-format", "stream-json", "--permission-mode", "acceptEdits"]);
+  assert.equal(fakeState.calls[0].args.includes("--dangerously-skip-permissions"), true);
 });
 
 test("claude task can resume the latest stored Claude session", () => {
@@ -105,10 +107,10 @@ test("claude status and result read stored job output", () => {
   assert.match(result.stdout, /Claude handled: inspect status/);
 });
 
-test("claude MCP server lists tools and calls status", async () => {
+test("claude MCP server lists tools and maps task permission modes", async () => {
   const repo = makeRepo();
   const binDir = makeTempDir();
-  installFakeClaude(binDir);
+  const statePath = installFakeClaude(binDir);
   const env = buildClaudeEnv(binDir, { CODEX_PLUGIN_DATA: makeTempDir() });
   const child = spawn("node", [MCP_SERVER], {
     cwd: repo,
@@ -146,15 +148,34 @@ test("claude MCP server lists tools and calls status", async () => {
 
   send({ id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } });
   const initialized = await waitFor(1);
+  assert.equal(initialized.jsonrpc, "2.0");
   assert.equal(initialized.result.serverInfo.name, "claude-mcp-server");
 
   send({ id: 2, method: "tools/list", params: {} });
   const listed = await waitFor(2);
+  assert.equal(listed.jsonrpc, "2.0");
   assert.equal(listed.result.tools.some((tool) => tool.name === "claude_status"), true);
 
   send({ id: 3, method: "tools/call", params: { name: "claude_status", arguments: { cwd: repo } } });
   const called = await waitFor(3);
+  assert.equal(called.jsonrpc, "2.0");
   assert.equal(called.result.content[0].type, "text");
+
+  send({ id: 4, method: "tools/call", params: { name: "claude_task", arguments: { cwd: repo, prompt: "apply the fix" } } });
+  const defaultTask = await waitFor(4);
+  assert.equal(defaultTask.jsonrpc, "2.0");
+  assert.match(defaultTask.result.content[0].text, /Claude handled: apply the fix/);
+
+  send({ id: 5, method: "tools/call", params: { name: "claude_task", arguments: { cwd: repo, prompt: "plan only", write: false } } });
+  const planTask = await waitFor(5);
+  assert.equal(planTask.jsonrpc, "2.0");
+  assert.match(planTask.result.content[0].text, /Claude handled: plan only/);
+
+  const fakeState = readFakeState(statePath);
+  assert.deepEqual(fakeState.calls[0].args.slice(0, 6), ["--print", "--verbose", "--output-format", "stream-json", "--permission-mode", "acceptEdits"]);
+  assert.equal(fakeState.calls[0].args.includes("--dangerously-skip-permissions"), true);
+  assert.deepEqual(fakeState.calls[1].args.slice(0, 6), ["--print", "--verbose", "--output-format", "stream-json", "--permission-mode", "plan"]);
+  assert.equal(fakeState.calls[1].args.includes("--dangerously-skip-permissions"), false);
 
   child.stdin.end();
   child.kill();
