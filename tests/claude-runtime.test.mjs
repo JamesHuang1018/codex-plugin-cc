@@ -16,6 +16,26 @@ function readFakeState(statePath) {
   return JSON.parse(fs.readFileSync(statePath, "utf8"));
 }
 
+function processIsRunning(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitUntil(predicate, label, timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for ${label}`);
+}
+
 function makeRepo() {
   const repo = makeTempDir("claude-plugin-test-");
   initGitRepo(repo);
@@ -179,4 +199,46 @@ test("claude MCP server lists tools and maps task permission modes", async () =>
 
   child.stdin.end();
   child.kill();
+});
+
+test("claude MCP server cancels an active task process", async () => {
+  const repo = makeRepo();
+  const binDir = makeTempDir();
+  const statePath = installFakeClaude(binDir, "slow");
+  const env = buildClaudeEnv(binDir, { CODEX_PLUGIN_DATA: makeTempDir() });
+  const child = spawn("node", [MCP_SERVER], {
+    cwd: repo,
+    env,
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+
+  child.stdout.setEncoding("utf8");
+  child.stdout.resume();
+
+  function send(message) {
+    child.stdin.write(`${JSON.stringify(message)}\n`);
+  }
+
+  try {
+    send({ id: 1, method: "tools/call", params: { name: "claude_task", arguments: { cwd: repo, prompt: "slow task" } } });
+    await waitUntil(() => {
+      if (!fs.existsSync(statePath)) {
+        return false;
+      }
+      try {
+        return readFakeState(statePath).calls.length === 1;
+      } catch {
+        return false;
+      }
+    }, "fake Claude call");
+
+    const pid = readFakeState(statePath).calls[0].pid;
+    assert.equal(processIsRunning(pid), true);
+
+    send({ method: "notifications/cancelled", params: { requestId: 1, reason: "test cancellation" } });
+    await waitUntil(() => !processIsRunning(pid), "fake Claude process exit");
+  } finally {
+    child.stdin.end();
+    child.kill();
+  }
 });

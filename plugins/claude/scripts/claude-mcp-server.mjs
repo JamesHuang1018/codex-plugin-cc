@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 
 const ROOT_DIR = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const COMPANION = path.join(ROOT_DIR, "scripts", "claude-companion.mjs");
+const activeRequests = new Map();
+const cancelledRequests = new Set();
 
 const TOOLS = [
   {
@@ -109,14 +111,77 @@ function toolResult(text, structuredContent = null, isError = false) {
   return result;
 }
 
+function requestKey(id) {
+  return id === undefined || id === null ? null : String(id);
+}
+
+function terminateProcessTree(pid) {
+  if (!Number.isFinite(pid) || pid <= 0) {
+    return false;
+  }
+  try {
+    if (process.platform === "win32") {
+      spawn("taskkill", ["/PID", String(pid), "/T", "/F"], {
+        stdio: "ignore",
+        windowsHide: true
+      });
+      return true;
+    }
+    try {
+      process.kill(-pid, "SIGTERM");
+    } catch {
+      process.kill(pid, "SIGTERM");
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function registerActiveRequest(id, child) {
+  const key = requestKey(id);
+  if (key) {
+    activeRequests.set(key, child);
+  }
+}
+
+function clearActiveRequest(id) {
+  const key = requestKey(id);
+  if (key) {
+    activeRequests.delete(key);
+  }
+}
+
+function cancelActiveRequest(id) {
+  const key = requestKey(id);
+  if (!key) {
+    return false;
+  }
+  cancelledRequests.add(key);
+  const child = activeRequests.get(key);
+  if (!child?.pid) {
+    return false;
+  }
+  return terminateProcessTree(child.pid);
+}
+
+function terminateActiveRequests() {
+  for (const [key, child] of activeRequests.entries()) {
+    cancelledRequests.add(key);
+    terminateProcessTree(child.pid ?? Number.NaN);
+  }
+}
+
 function runCompanion(args, options = {}) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [COMPANION, ...args], {
       cwd: options.cwd ?? process.cwd(),
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
       windowsHide: true
     });
+    registerActiveRequest(options.requestId, child);
     let stdout = "";
     let stderr = "";
     child.stdout.setEncoding("utf8");
@@ -128,9 +193,11 @@ function runCompanion(args, options = {}) {
       stderr += chunk;
     });
     child.on("error", (error) => {
+      clearActiveRequest(options.requestId);
       resolve({ status: 1, stdout, stderr: error.message });
     });
     child.on("exit", (code, signal) => {
+      clearActiveRequest(options.requestId);
       resolve({ status: code ?? (signal ? 1 : 0), stdout, stderr });
     });
   });
@@ -142,7 +209,7 @@ function addOptional(args, name, value) {
   }
 }
 
-async function callTool(name, input = {}) {
+async function callTool(name, input = {}, requestId = null) {
   if (name === "claude_task") {
     const args = ["task", "--json"];
     if (input.background) {
@@ -161,7 +228,7 @@ async function callTool(name, input = {}) {
     addOptional(args, "--model", input.model);
     addOptional(args, "--effort", input.effort);
     args.push(input.prompt ?? "");
-    const result = await runCompanion(args, { cwd: input.cwd });
+    const result = await runCompanion(args, { cwd: input.cwd, requestId });
     return parseCompanionResult(result);
   }
 
@@ -177,7 +244,7 @@ async function callTool(name, input = {}) {
     if (input.job_id) {
       args.push(input.job_id);
     }
-    const result = await runCompanion(args, { cwd: input.cwd });
+    const result = await runCompanion(args, { cwd: input.cwd, requestId });
     return parseCompanionResult(result);
   }
 
@@ -187,7 +254,7 @@ async function callTool(name, input = {}) {
     if (input.job_id) {
       args.push(input.job_id);
     }
-    const result = await runCompanion(args, { cwd: input.cwd });
+    const result = await runCompanion(args, { cwd: input.cwd, requestId });
     return parseCompanionResult(result);
   }
 
@@ -197,7 +264,7 @@ async function callTool(name, input = {}) {
     if (input.job_id) {
       args.push(input.job_id);
     }
-    const result = await runCompanion(args, { cwd: input.cwd });
+    const result = await runCompanion(args, { cwd: input.cwd, requestId });
     return parseCompanionResult(result);
   }
 
@@ -220,6 +287,11 @@ function handleRequest(message) {
   const id = message.id;
   const method = message.method;
 
+  if (method === "notifications/cancelled") {
+    cancelActiveRequest(message.params?.requestId);
+    return;
+  }
+
   if (method === "initialize") {
     send({
       id,
@@ -241,9 +313,23 @@ function handleRequest(message) {
   }
 
   if (method === "tools/call") {
-    callTool(message.params?.name, message.params?.arguments ?? {})
-      .then((result) => send({ id, result }))
-      .catch((error) => send({ id, result: toolResult(error instanceof Error ? error.message : String(error), null, true) }));
+    const key = requestKey(id);
+    callTool(message.params?.name, message.params?.arguments ?? {}, id)
+      .then((result) => {
+        if (!cancelledRequests.has(key)) {
+          send({ id, result });
+        }
+      })
+      .catch((error) => {
+        if (!cancelledRequests.has(key)) {
+          send({ id, result: toolResult(error instanceof Error ? error.message : String(error), null, true) });
+        }
+      })
+      .finally(() => {
+        if (key) {
+          cancelledRequests.delete(key);
+        }
+      });
     return;
   }
 
@@ -259,6 +345,9 @@ function handleRequest(message) {
 }
 
 const rl = readline.createInterface({ input: process.stdin });
+rl.on("close", () => {
+  terminateActiveRequests();
+});
 rl.on("line", (line) => {
   if (!line.trim()) {
     return;
@@ -274,4 +363,14 @@ rl.on("line", (line) => {
       }
     });
   }
+});
+
+process.on("SIGTERM", () => {
+  terminateActiveRequests();
+  process.exit(143);
+});
+
+process.on("SIGINT", () => {
+  terminateActiveRequests();
+  process.exit(130);
 });

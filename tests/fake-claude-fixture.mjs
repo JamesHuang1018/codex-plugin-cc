@@ -29,11 +29,15 @@ if (args[0] === "--version") {
   process.exit(0);
 }
 
+process.on("SIGTERM", () => {
+  process.exit(143);
+});
+
 const state = loadState();
 const sessionIdIndex = args.indexOf("--resume");
 const resumedSessionId = sessionIdIndex === -1 ? null : args[sessionIdIndex + 1];
 const sessionId = resumedSessionId || "sess_" + state.nextSessionId++;
-state.calls.push({ args, cwd: process.cwd(), sessionId });
+state.calls.push({ args, cwd: process.cwd(), sessionId, pid: process.pid });
 saveState(state);
 
 if (args.includes("--print") && args.includes("stream-json") && !args.includes("--verbose")) {
@@ -49,6 +53,10 @@ if (args.includes("acceptEdits") && !args.includes("--dangerously-skip-permissio
 if (BEHAVIOR === "fail") {
   console.error("claude failed intentionally");
   process.exit(2);
+}
+
+if (BEHAVIOR === "slow") {
+  setInterval(() => {}, 1000);
 }
 
 const prompt = args[args.length - 1] || "";
