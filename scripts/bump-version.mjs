@@ -8,6 +8,7 @@ const VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z
 const TARGETS = [
   {
     file: "package.json",
+    plugins: ["codex", "claude"],
     values: [
       {
         label: "version",
@@ -20,6 +21,7 @@ const TARGETS = [
   },
   {
     file: "package-lock.json",
+    plugins: ["codex", "claude"],
     values: [
       {
         label: "version",
@@ -40,6 +42,20 @@ const TARGETS = [
   },
   {
     file: "plugins/codex/.claude-plugin/plugin.json",
+    plugins: ["codex"],
+    values: [
+      {
+        label: "version",
+        get: (json) => json.version,
+        set: (json, version) => {
+          json.version = version;
+        }
+      }
+    ]
+  },
+  {
+    file: "plugins/claude/.codex-plugin/plugin.json",
+    plugins: ["claude"],
     values: [
       {
         label: "version",
@@ -52,6 +68,7 @@ const TARGETS = [
   },
   {
     file: ".claude-plugin/marketplace.json",
+    plugins: ["codex"],
     values: [
       {
         label: "metadata.version",
@@ -72,24 +89,36 @@ const TARGETS = [
   }
 ];
 
+const KNOWN_PLUGINS = ["codex", "claude"];
+
 function usage() {
   return [
     "Usage:",
     "  node scripts/bump-version.mjs <version>",
     "  node scripts/bump-version.mjs --check [version]",
+    "  node scripts/bump-version.mjs --plugin claude <version>",
     "",
     "Options:",
-    "  --check       Verify manifest versions. Uses package.json when version is omitted.",
-    "  --root <dir>  Run against a different repository root.",
-    "  --help       Print this help."
+    "  --check         Verify manifest versions. Uses package.json when version is omitted.",
+    "  --plugin <name> Limit to a single plugin scope. One of: " + KNOWN_PLUGINS.join(", ") + ".",
+    "  --root <dir>    Run against a different repository root.",
+    "  --help          Print this help."
   ].join("\n");
+}
+
+function selectTargets(plugin) {
+  if (!plugin) {
+    return TARGETS;
+  }
+  return TARGETS.filter((target) => target.plugins.includes(plugin));
 }
 
 function parseArgs(argv) {
   const options = {
     check: false,
     root: process.cwd(),
-    version: null
+    version: null,
+    plugin: null
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -97,6 +126,16 @@ function parseArgs(argv) {
 
     if (arg === "--check") {
       options.check = true;
+    } else if (arg === "--plugin") {
+      const plugin = argv[i + 1];
+      if (!plugin) {
+        throw new Error("--plugin requires a name.");
+      }
+      if (!KNOWN_PLUGINS.includes(plugin)) {
+        throw new Error(`Unknown plugin: ${plugin}. Expected one of: ${KNOWN_PLUGINS.join(", ")}.`);
+      }
+      options.plugin = plugin;
+      i += 1;
     } else if (arg === "--root") {
       const root = argv[i + 1];
       if (!root) {
@@ -156,10 +195,10 @@ function readPackageVersion(root) {
   return packageJson.version;
 }
 
-function checkVersions(root, expectedVersion) {
+function checkVersions(root, expectedVersion, plugin) {
   const mismatches = [];
 
-  for (const target of TARGETS) {
+  for (const target of selectTargets(plugin)) {
     const json = readJson(root, target.file);
     for (const value of target.values) {
       const actual = value.get(json);
@@ -172,10 +211,10 @@ function checkVersions(root, expectedVersion) {
   return mismatches;
 }
 
-function bumpVersion(root, version) {
+function bumpVersion(root, version, plugin) {
   const changedFiles = [];
 
-  for (const target of TARGETS) {
+  for (const target of selectTargets(plugin)) {
     const json = readJson(root, target.file);
     const before = JSON.stringify(json);
 
@@ -206,15 +245,16 @@ function main() {
   validateVersion(version);
 
   if (options.check) {
-    const mismatches = checkVersions(options.root, version);
+    const mismatches = checkVersions(options.root, version, options.plugin);
     if (mismatches.length > 0) {
       throw new Error(`Version metadata is out of sync:\n${mismatches.join("\n")}`);
     }
-    console.log(`All version metadata matches ${version}.`);
+    const scope = options.plugin ? `${options.plugin} version metadata` : "All version metadata";
+    console.log(`${scope} matches ${version}.`);
     return;
   }
 
-  const changedFiles = bumpVersion(options.root, version);
+  const changedFiles = bumpVersion(options.root, version, options.plugin);
   const touched = changedFiles.length > 0 ? changedFiles.join(", ") : "no files changed";
   console.log(`Set version metadata to ${version}: ${touched}.`);
 }

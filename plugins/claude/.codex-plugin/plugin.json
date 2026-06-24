@@ -1,6 +1,6 @@
 {
   "name": "claude",
-  "version": "0.1.0",
+  "version": "1.0.5",
   "description": "Use Claude Code from Codex to delegate implementation, planning, and follow-up tasks.",
   "author": {
     "name": "OpenAI"
