@@ -1,0 +1,41 @@
+{
+  "name": "claude",
+  "version": "0.1.0",
+  "description": "Use Claude Code from Codex to plan or delegate tasks.",
+  "author": {
+    "name": "OpenAI"
+  },
+  "homepage": "https://developers.openai.com/codex/plugins",
+  "repository": "https://github.com/openai/codex-plugin-cc",
+  "license": "Apache-2.0",
+  "keywords": [
+    "claude-code",
+    "delegation",
+    "planning",
+    "codex"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Claude Code Delegate",
+    "shortDescription": "Delegate planning and tasks from Codex to Claude Code",
+    "longDescription": "Use Claude Code from Codex through a local runtime that supports plan-first delegation, background jobs, status checks, stored results, cancellation, and resume.",
+    "developerName": "OpenAI",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://openai.com/",
+    "privacyPolicyURL": "https://openai.com/policies/row-privacy-policy/",
+    "termsOfServiceURL": "https://openai.com/policies/row-terms-of-use/",
+    "defaultPrompt": [
+      "Ask Claude Code to plan this change",
+      "Delegate this investigation to Claude Code",
+      "Have Claude Code continue the last delegated task"
+    ],
+    "brandColor": "#111111",
+    "screenshots": []
+  }
+}

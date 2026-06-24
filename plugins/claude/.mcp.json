@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "claude-code-delegate": {
+      "command": "node",
+      "args": [
+        "./scripts/claude-mcp-server.mjs"
+      ],
+      "cwd": ".",
+      "tool_timeout_sec": 900
+    }
+  }
+}
